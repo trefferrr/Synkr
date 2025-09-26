@@ -16,7 +16,7 @@ Promise<void>=>{
             });
             return;
         }
-        const token=authHeader.split(" ")[1]
+        const token=authHeader.split(" ")[1] as string
 
         const decodedValue= jwt.verify(token,process.env.JWT_SECRET as string) as JwtPayload
 
@@ -31,9 +31,8 @@ Promise<void>=>{
 
     }
     catch(e){
-        res.status(401).json
-({
+        res.status(401).json({
     message:"Please Login- JWT error",
 });
     }
-}
+};
