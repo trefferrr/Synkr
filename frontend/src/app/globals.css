@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+/* Hide scrollbar in emoji picker viewport while preserving scroll */
+.emoji-scroll{
+  scrollbar-width: none; /* Firefox */
+}
+.emoji-scroll::-webkit-scrollbar{ /* Chrome, Safari */
+  width: 0;
+  height: 0;
+}

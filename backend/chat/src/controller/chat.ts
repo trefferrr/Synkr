@@ -187,6 +187,54 @@ await Chat.findByIdAndUpdate(chatId,{
 });
 });
 
+export const deleteMessageForEveryone = TryCatch(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user?._id as any;
+    const { messageId } = req.params as { messageId: string };
+
+    if (!userId) {
+        res.status(401).json({ message: "unauthorized" });
+        return;
+    }
+    if (!messageId) {
+        res.status(400).json({ message: "messageId required" });
+        return;
+    }
+
+    const msg = await Messages.findById(messageId);
+    if (!msg) {
+        res.status(404).json({ message: "Message not found" });
+        return;
+    }
+
+    if (msg.sender.toString() !== userId.toString()) {
+        res.status(403).json({ message: "Only sender can delete for everyone" });
+        return;
+    }
+
+    const chatId = msg.chatId as any;
+
+    await Messages.findByIdAndDelete(messageId);
+
+    // Update latestMessage if needed
+    const latest = await Messages.find({ chatId }).sort({ createdAt: -1 }).limit(1);
+    const latestMsg = latest[0] || null as any;
+    await Chat.findByIdAndUpdate(chatId, {
+        latestMessage: latestMsg
+            ? { text: latestMsg.image ? "📸Image" : (latestMsg.text || ""), sender: latestMsg.sender }
+            : { text: "", sender: "" },
+        updatedAt: new Date(),
+    });
+
+    // Emit socket event so both clients remove it
+    try {
+        const { io } = await import("../config/socket.js");
+        io.to(String(chatId)).emit("messageDeleted", { chatId: String(chatId), messageId, mode: "everyone" });
+    } catch {}
+
+    res.json({ success: true, messageId });
+});
+
+
 export const getMessageByChat=TryCatch(async(req:AuthenticatedRequest,res)=>{
     const userId=req.user?._id;
     const {chatId}=req.params;

@@ -48,10 +48,12 @@ export const startSendOtpConsumer=async()=>{
                     text:body
                  })
                  console.log(`OTP mail sent ${to}`)
+                 channel.ack(msg); // Acknowledge the message after successful processing
 
                 }
                 catch(e){
                     console.log("Failed to send otp",e)
+                    channel.nack(msg, false, false); // Reject message on failure
                 }
             }
         })
