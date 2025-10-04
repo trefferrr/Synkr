@@ -11,7 +11,13 @@ connectDB();
 
 app.use(express.json());
 
-app.use(cors())
+app.use(cors({
+    origin: [
+        'https://frontend-fw0r5mpky-adityas-projects-6d993e50.vercel.app',
+        'http://localhost:3000' 
+    ],
+    credentials: true
+}));
 
 app.use("/api/v1",chatRoutes);
  
