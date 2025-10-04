@@ -7,7 +7,8 @@ export interface  IUSER extends Document{
 const schema : Schema<IUSER>=new Schema({
     name:{
         type:String,
-        required:true
+        required:true,
+        unique:true
     },
     email:{
         type:String,

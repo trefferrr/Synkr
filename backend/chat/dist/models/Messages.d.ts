@@ -10,6 +10,7 @@ export interface IMessage extends Document {
     messageType: "text" | "image";
     seen: boolean;
     seenAt?: Date;
+    replyTo?: any;
     createdAt: Date;
     updatedAt: Date;
 }

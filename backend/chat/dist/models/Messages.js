@@ -27,6 +27,10 @@ const schema = new Schema({
         type: Date,
         default: null,
     },
+    replyTo: {
+        type: Schema.Types.Mixed,
+        default: null,
+    },
 }, {
     timestamps: true,
 });

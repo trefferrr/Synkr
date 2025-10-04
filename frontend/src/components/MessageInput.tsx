@@ -1,5 +1,5 @@
 import { File, Loader2, Paperclip, Send, Smile, X, Search } from 'lucide-react';
-import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useRef, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { EmojiPicker } from 'frimousse';
 
 interface MessageInputProps {
@@ -8,6 +8,12 @@ interface MessageInputProps {
     setMessage: (message: string) => void;
     handleMessageSend: (e:any, imageFile?: File | null) => void;
     onFileSelect?: (file: File) => void;
+    replyPreview?: any | null;
+    onCancelReply?: () => void;
+    loggedInUser?: any;
+    chats?: any[];
+    sendTyping?: (data: { chatId: string; userId: string }) => void;
+    sendStopTyping?: (data: { chatId: string; userId: string }) => void;
 }
 
 const MessageInput = forwardRef<any, MessageInputProps>(({
@@ -16,14 +22,76 @@ const MessageInput = forwardRef<any, MessageInputProps>(({
   setMessage,
   handleMessageSend,
   onFileSelect,
+  replyPreview,
+  onCancelReply,
+  loggedInUser,
+  chats,
+  sendTyping,
+  sendStopTyping,
 }, ref) => {
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
-    const [fileType, setFileType] = useState<'image' | 'document' | null>(null);
+    const [fileType, setFileType] = useState<'image' | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const textInputRef = useRef<HTMLInputElement>(null);
+    const textInputRef = useRef<HTMLTextAreaElement>(null);
+    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const pickerRef = useRef<HTMLDivElement>(null);
+    const [textareaHeight, setTextareaHeight] = useState('auto');
+
+    const getUserName = (senderId: string) => {
+        if (senderId === loggedInUser?._id) return 'You';
+        
+        // Find the chat to get the other user's name
+        const currentChat = chats?.find(chat => chat.chat._id === selectedUser);
+        if (currentChat && (currentChat as any).user) {
+            return (currentChat as any).user.name.split('@')[0];
+        }
+        
+        return 'User';
+    };
+
+    const handleTyping = (value: string) => {
+      setMessage(value);
+      
+      // Send typing event
+      if (selectedUser && loggedInUser && sendTyping) {
+        sendTyping({ chatId: selectedUser, userId: loggedInUser._id });
+        
+        // Clear existing timeout
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+        
+        // Set new timeout to send stop typing after 2 seconds
+        typingTimeoutRef.current = setTimeout(() => {
+          if (sendStopTyping) {
+            sendStopTyping({ chatId: selectedUser, userId: loggedInUser._id });
+          }
+        }, 2000);
+      }
+    };
+
+    const adjustTextareaHeight = () => {
+        if (textInputRef.current) {
+            textInputRef.current.style.height = 'auto';
+            const scrollHeight = textInputRef.current.scrollHeight;
+            const maxHeight = 120; // Maximum height in pixels (about 5 lines)
+            const newHeight = Math.min(scrollHeight, maxHeight);
+            textInputRef.current.style.height = `${newHeight}px`;
+            setTextareaHeight(`${newHeight}px`);
+        }
+    };
+
+    const handleMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        handleTyping(e.target.value);
+        adjustTextareaHeight();
+    };
+
+    // Adjust height when message changes externally (e.g., after sending)
+    useEffect(() => {
+        adjustTextareaHeight();
+    }, [message]);
 
     // Expose methods to parent component
     useImperativeHandle(ref, () => ({
@@ -62,17 +130,8 @@ const MessageInput = forwardRef<any, MessageInputProps>(({
             if (onFileSelect) {
                 onFileSelect(file);
             }
-        } else if (file.type === "application/pdf" || 
-                  file.type === "application/msword" || 
-                  file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-                  file.type === "text/plain") {
-            setFileType('document');
-            setImageFile(file);
-            if (onFileSelect) {
-                onFileSelect(file);
-            }
         } else {
-            alert("Unsupported file type. Please upload an image or document (PDF, DOC, DOCX, TXT).");
+            alert("Unsupported file type. Please upload an image only.");
         }
     };
 
@@ -87,11 +146,12 @@ const MessageInput = forwardRef<any, MessageInputProps>(({
         const end = input.selectionEnd ?? current.length;
         const next = current.slice(0, start) + emoji + current.slice(end);
         setMessage(next);
-        // restore caret after emoji
+        // restore caret after emoji and adjust height
         requestAnimationFrame(() => {
             input.focus();
             const caret = start + emoji.length;
             input.setSelectionRange(caret, caret);
+            adjustTextareaHeight();
         });
     };
 
@@ -144,12 +204,38 @@ const MessageInput = forwardRef<any, MessageInputProps>(({
 
     if(!selectedUser) return null;
 
-    return (
+  return (
         <form
   onSubmit={handleSubmit}
   className="flex items-center gap-2 border-t border-gray-700 px-3 py-2 bg-gray-900"
   style={{ margin: '0px', paddingTop: '8px', paddingBottom: '8px', marginTop: '-20px' }}
 >
+  {replyPreview && (
+    <div className="absolute bottom-18.5 left-3 right-3 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+      <div className="flex items-center gap-2 mb-1 ">
+        <div className="text-blue-400 text-xs font-medium">Replying</div>
+        <div className="text-gray-400 text-xs">
+          {(() => {
+            const sender = (replyPreview as any).sender ?? replyPreview.senderId;
+            return getUserName(sender);
+          })()}
+        </div>
+        <button type="button" onClick={onCancelReply} className="ml-auto p-1 hover:bg-gray-700 rounded transition-colors">
+          <X className="w-4 h-4 text-gray-400 hover:text-gray-200" />
+        </button>
+      </div>
+      <div className="text-gray-300 text-xs truncate">
+        {(() => {
+          const rawText = replyPreview?.text || '';
+          const isForwarded = typeof rawText === 'string' && /^Forwarded(\s*\n)?/i.test(rawText);
+          const displayText = isForwarded ? rawText.replace(/^Forwarded\s*\n?/i, '') : rawText;
+          const finalText = displayText || (replyPreview?.image ? '📸 Photo' : 'Message');
+          // Show only first 40 characters in preview
+          return finalText.length > 40 ? finalText.substring(0, 40) + '...' : finalText;
+        })()}
+      </div>
+    </div>
+  )}
   {/* File Button */}
   <button
     type="button"
@@ -162,7 +248,7 @@ const MessageInput = forwardRef<any, MessageInputProps>(({
   <input
     ref={fileInputRef}
     type="file"
-    accept="image/*,.pdf,.doc,.docx,.txt"
+    accept="image/*"
     className="hidden"
     onChange={handleFileChange}
   />
@@ -194,7 +280,6 @@ const MessageInput = forwardRef<any, MessageInputProps>(({
           onEmojiSelect={(e: any) => {
             const value = e?.emoji || e?.native || e?.shortcode || '';
             if (value) insertEmoji(value);
-            setShowEmojiPicker(false);
           }}
           columns={6}
         >
@@ -218,20 +303,27 @@ const MessageInput = forwardRef<any, MessageInputProps>(({
 
 
   {/* Message Input */}
-  <input
-    type="text"
+  <textarea
     ref={textInputRef}
-    className="flex-1 bg-gray-800 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-    placeholder={imageFile ? "Add a caption..." : "Type a message..."}
+    className="flex-1 bg-gray-800 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none overflow-hidden"
+    placeholder={imageFile ? "Add a caption..." : "Type a msg..."}
     value={typeof message === 'string' ? message : ''}
-    onChange={(e) => setMessage(e.target.value)}
+    onChange={handleMessageChange}
+    onKeyDown={(e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit(e);
+      }
+    }}
+    style={{ height: textareaHeight, minHeight: '48px' }}
+    rows={1}
   />
 
   {/* Send Button */}
   <button
     type='submit'
     disabled={(!imageFile && !message) || isUploading}
-    className='bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-white'
+    className='bg-blue-600 hover:bg-blue-700 px-2 py-3 rounded-full transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed text-white'
   >
     {isUploading ? (
       <Loader2 className='w-4 h-4 animate-spin'/>

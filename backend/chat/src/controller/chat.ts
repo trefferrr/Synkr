@@ -1,3 +1,4 @@
+import { getReceiverSocketId, io } from "../config/socket.js";
 import TryCatch from "../config/TryCatch.js";
 import type { AuthenticatedRequest } from "../middlewares/isAuth.js";
 import { Chat } from "../models/Chats.js";
@@ -91,7 +92,7 @@ res.json({
 });
 export const sendMessage=TryCatch(async(req:AuthenticatedRequest,res)=>{
     const senderId=req.user?._id;
-    const {chatId,text}=req.body;
+    const {chatId,text,replyTo}=req.body;
     const imageFile=req.file;
 
 
@@ -142,15 +143,33 @@ export const sendMessage=TryCatch(async(req:AuthenticatedRequest,res)=>{
 }
 
 //socket
+const receiverSocketId=getReceiverSocketId(otherUserId.toString());
+let isReceiverInChatRoom= false;
+if(receiverSocketId){
+   const recieverSocket=io.sockets.sockets.get(receiverSocketId);
+   if(recieverSocket && recieverSocket.rooms.has(chatId)){
+    isReceiverInChatRoom= true;
+   }
+}
 
 
 
 let messageData:any={
     chatId:chatId,
     sender:senderId,
-    seen:false,
-    seenAt:undefined,
+    seen:isReceiverInChatRoom,
+    seenAt:isReceiverInChatRoom ? new Date() : undefined,
 };
+
+// Add replyTo if provided
+if(replyTo){
+    try{
+        const parsedReplyTo = JSON.parse(replyTo);
+        messageData.replyTo = parsedReplyTo;
+    }catch(e){
+        // Ignore invalid JSON
+    }
+}
 if(imageFile){
     messageData.image={
         url:imageFile.path,
@@ -180,6 +199,25 @@ await Chat.findByIdAndUpdate(chatId,{
 );
 
  //emit socket
+
+ io.to(chatId).emit("newMessage", savedMessage);
+
+ if(receiverSocketId){
+    io.to(receiverSocketId).emit("newMessage", savedMessage);
+ }
+
+    const senderSocketId=getReceiverSocketId(senderId.toString());
+    if(senderSocketId){
+        io.to(senderSocketId).emit("newMessage", savedMessage);
+    }
+
+    if(isReceiverInChatRoom && senderSocketId){
+        io.to(senderSocketId).emit("messageSeen", {
+            chatId:chatId,
+            seenBy: otherUserId,
+            messageId: [savedMessage._id],
+        });
+}
 
  res.status(201).json({
     message:savedMessage,
@@ -296,6 +334,17 @@ export const getMessageByChat=TryCatch(async(req:AuthenticatedRequest,res)=>{
         });
  }
  //socket
+
+ if (messageToMarkSeen.length > 0 && otherUserId) {
+    const otherUserSocketId = getReceiverSocketId(otherUserId.toString());
+    if (otherUserSocketId) {
+        io.to(otherUserSocketId).emit("messageSeen", {
+            chatId: chatId,
+            seenBy: userId,
+            messageId: messageToMarkSeen.map((msg:any)=>msg._id),
+        });
+    }
+ }
 
  res.json({
     messages,

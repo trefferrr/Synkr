@@ -14,11 +14,13 @@ export interface User{
 }
 
 export interface Chats{
+    chat: any;
     _id:string;
     users:string[];
     latestMessage:{
         text:string;
         sender:string;
+        createdAt:string;
     };
     createdAt:string;
     updatedAt:string;
@@ -28,7 +30,7 @@ export interface Chats{
 export interface Chat{
     _id:string;
     user:User;
-    chat:Chat;
+    chat:Chats;
 }
 
 interface AppContextType{
@@ -40,9 +42,9 @@ interface AppContextType{
     fetchUsers:()=> Promise<void>;
     fetchChats:()=> Promise<void>;
     logoutUser:()=> Promise<void>;
-    chats: Chats[]|null;
+    chats: Chat[]|null;
     users:User[] | null;
-    setChats: React.Dispatch<React.SetStateAction<Chats[] | null>>;
+    setChats: React.Dispatch<React.SetStateAction<Chat[] | null>>;
 }
 
 const AppContext=createContext<AppContextType | undefined>(undefined)
@@ -80,7 +82,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({children})=>{
                 setIsAuth(false);
                 toast.success("User Logged Out");
             }
-        const [chats,setChats]=useState<Chats[]|null>(null)
+        const [chats,setChats]=useState<Chat[]|null>(null)
         async function fetchChats() {
             const token= Cookies.get("token")
             try {

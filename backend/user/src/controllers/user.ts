@@ -78,21 +78,74 @@ export const myProfile = TryCatch(async (req:AuthenticatedRequest, res)=>{
     res.json(user);
 })
 export const updateName=TryCatch(async(req:AuthenticatedRequest,res)=>{
+    // Validate request body
+    if(!req.body.name || typeof req.body.name !== 'string'){
+        res.status(400).json({
+            message:"Name is required and must be a string",
+        });
+        return;
+    }
+
+    const trimmedName = req.body.name.trim();
+    if(trimmedName.length < 2 || trimmedName.length >15){
+        res.status(400).json({
+            message:"Name must be between 2 and 15 characters",
+        });
+        return;
+    }
+
     const user=await User.findById(req.user?._id);
     if(!user){
-    res.status(404).json({
-        message:"Please login",
+        res.status(404).json({
+            message:"Please login",
+        });
+        return;
+    }
+    
+    // Check if name is already taken by another user
+    const existingUser = await User.findOne({ 
+        name: trimmedName, 
+        _id: { $ne: user._id } 
     });
-    return;
-}
-user.name=req.body.name;
-await user.save();
-const token=generateToken(user)
-res.json({
-    message:"User Updated",
-    user,
-    token,
-})
+    
+    if(existingUser){
+        res.status(409).json({
+            message:"Name is already taken by another user",
+        });
+        return;
+    }
+    
+    // If the name is the same, no need to update
+    if(user.name === trimmedName){
+        res.status(200).json({
+            message:"Name is already up to date",
+            user,
+            token: generateToken(user),
+        });
+        return;
+    }
+    
+    user.name = trimmedName;
+    
+    try {
+        await user.save();
+        const token = generateToken(user);
+        res.json({
+            message:"Name updated successfully",
+            user,
+            token,
+        });
+    } catch (error: any) {
+        // Handle MongoDB duplicate key error
+        if (error.code === 11000) {
+            res.status(400).json({
+                message:"Name is already taken by another user",
+            });
+            return;
+        }
+        // Re-throw other errors to be handled by TryCatch
+        throw error;
+    }
 })
 
 export const getAllUsers=TryCatch(async(req:AuthenticatedRequest,res)=>{

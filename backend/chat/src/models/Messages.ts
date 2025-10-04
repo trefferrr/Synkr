@@ -11,6 +11,7 @@ export interface IMessage extends Document{
     messageType: "text"|"image";
     seen:boolean;
     seenAt?:Date;
+    replyTo?:any;
     createdAt:Date;
     updatedAt:Date;
 }
@@ -41,6 +42,10 @@ const schema = new Schema<IMessage>(
         },
         seenAt:{
             type:Date,
+            default:null,
+        },
+        replyTo:{
+            type:Schema.Types.Mixed,
             default:null,
         },
     },{

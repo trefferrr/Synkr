@@ -4,11 +4,19 @@ import {
   CornerUpLeft,
   LogOut,
   MessageCircle,
+  Pin,
   Plus,
   Search,
   Trash2,
   UserCircle,
   X,
+  MoreVertical,
+  Star,
+  EyeOff,
+  ArrowLeft,
+  ArrowRight,
+  MoreHorizontal,
+  User as UserIcon,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 
@@ -19,13 +27,22 @@ interface ChatSidebarProps {
   setShowAllUsers: (show: boolean | ((prev: boolean) => boolean)) => void;
   users: User[] | null;
   loggedInUser: User | null;
-  chats:any[] | null;
+  chats: any[] | null;
   selectedUser: string | null;
   setSelectedUser: (userId: string | null) => void;
   handleLogout: () => void;
   createChat: (user: User) => void;
   onlineUsers: string[] | undefined;
+  activeFilter?: 'all'|'favourites'|'hidden';
+  onProfileClick?: () => void;
 }
+
+// Responsive: AppRail actions as menu
+const FILTERS = [
+  { key: 'all', icon: <span className="text-xs">All</span> },
+  { key: 'favourites', icon: <Star className="w-4 h-4" /> },
+  { key: 'hidden', icon: <EyeOff className="w-4 h-4" /> },
+];
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({
   sidebarOpen,
@@ -40,12 +57,59 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   handleLogout,
   createChat,
   onlineUsers,
+  activeFilter = 'all',
+  onProfileClick,
 }) => {
+  // Responsive menu state
+  const [showRailMenu, setShowRailMenu] = useState(false);
+  const [mobileFilter, setMobileFilter] = useState<'all'|'favourites'|'hidden'>(activeFilter);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedChatIds, setSelectedChatIds] = useState<Set<string>>(new Set());
   const [hiddenChatIds, setHiddenChatIds] = useState<Set<string>>(new Set());
+  const [pinnedChatIds, setPinnedChatIds] = useState<Set<string>>(new Set());
+  const [favouriteChatIds, setFavouriteChatIds] = useState<Set<string>>(new Set());
   const longPressTimerRef = useRef<number | null>(null);
+  const [isSmallScreen, setIsSmallScreen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth > 768;
+    }
+    return false;
+  });
+
+  // Handle screen size for hiding text on small screens and desktop detection
+  useEffect(() => {
+    const handleResize = () => {
+      setIsSmallScreen(window.innerWidth < 425);
+      setIsDesktop(window.innerWidth > 768);
+    };
+    
+    handleResize(); // Check on mount
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Handle click outside to close rail menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showRailMenu) {
+        const target = event.target as Element;
+        // Check if click is outside the menu and button
+        if (!target.closest('[data-rail-menu]') && !target.closest('[data-rail-menu-button]')) {
+          setShowRailMenu(false);
+        }
+      }
+    };
+
+    if (showRailMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showRailMenu]);
 
   // Load hidden chats per logged-in user from localStorage
   useEffect(() => {
@@ -62,6 +126,24 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
       setHiddenChatIds(new Set());
     }
   }, [loggedInUser?._id]);
+
+  useEffect(()=>{
+    const keyP = `pinnedChats:${loggedInUser?._id || 'anon'}`;
+    const keyF = `favouriteChats:${loggedInUser?._id || 'anon'}`;
+    try{
+      const p = typeof window!=='undefined'? window.localStorage.getItem(keyP): null;
+      const f = typeof window!=='undefined'? window.localStorage.getItem(keyF): null;
+      setPinnedChatIds(new Set(p? JSON.parse(p): []));
+      setFavouriteChatIds(new Set(f? JSON.parse(f): []));
+    }catch{
+      setPinnedChatIds(new Set());
+      setFavouriteChatIds(new Set());
+    }
+  },[loggedInUser?._id]);
+
+  const persistSet=(key:string, ids:Set<string>)=>{
+    try{ if(typeof window!=='undefined'){ window.localStorage.setItem(key, JSON.stringify(Array.from(ids))); } }catch{}
+  }
 
   const persistHidden = (ids: Set<string>) => {
     const key = `hiddenChats:${loggedInUser?._id || "anon"}`;
@@ -118,52 +200,130 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     clearSelection();
   };
 
+  // Context menu state
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{x:number,y:number}>({x:0,y:0});
+  const [menuChatId, setMenuChatId] = useState<string | null>(null);
+
+  const openMenu=(e: React.MouseEvent, chatId: string)=>{
+    e.preventDefault();
+    setMenuChatId(chatId);
+    setMenuPos({x: e.clientX, y: e.clientY});
+    setMenuOpen(true);
+  };
+  const closeMenu=()=> setMenuOpen(false);
+
+  const togglePin=(chatId:string)=>{
+    setPinnedChatIds(prev=>{ const next=new Set(prev); if(next.has(chatId)) next.delete(chatId); else next.add(chatId); persistSet(`pinnedChats:${loggedInUser?._id||'anon'}`,next); return next; });
+    closeMenu();
+  }
+  const toggleFavourite=(chatId:string)=>{
+    setFavouriteChatIds(prev=>{ const next=new Set(prev); if(next.has(chatId)) next.delete(chatId); else next.add(chatId); persistSet(`favouriteChats:${loggedInUser?._id||'anon'}`,next); return next; });
+    closeMenu();
+  }
+  const deleteForMe=(chatId:string)=>{
+    const next=new Set(hiddenChatIds); next.add(chatId);
+     setHiddenChatIds(next); persistHidden(next); closeMenu();
+  }
+
   return (
     <div>
       <aside
-        className={`fixed z-20 sm:static top-0 left-0 h-screen w-80 bg-gradient-to-b from-gray-900 to-gray-950 border-r border-gray-700 transform ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } sm:translate-x-0 transition-transform duration-300 flex flex-col shadow-2xl`}
+        className={` ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+    fixed inset-y-0 left-0 h-screen w-[60vw] max-w-[350px] bg-gray-900 border-r border-gray-800
+    transition-transform duration-300 ease-in-out z-30 
+ flex flex-col shadow-2xl backdrop-blur-xl rounded-r-2xl
+    ${isDesktop ? 'md:static md:left-16 md:w-80 md:translate-x-0 md:rounded-none' : 'md:left-0'}`}
       >
         {/* Header */}
-        <div className="p-6 border-b border-gray-700 bg-gray-900 backdrop-blur-sm">
-          <div className="sm:hidden flex justify-end mb-2">
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-              aria-label="Close sidebar"
-            >
-              <X className="w-5 h-5 text-gray-300" />
-            </button>
+        <div className="p-4 sm:p-6 border-b border-gray-800 bg-gray-900/90 backdrop-blur-xl relative rounded-tr-2xl sm:rounded-none shadow-md">
+          {/* Mobile: Close button */}
+          <div className={`flex items-center justify-end mb-2 ${isDesktop ? 'md:hidden' : 'md:flex'}`}>
+           
+
+            {/* 3-dot menu dropdown */}
+            {showRailMenu && (
+              <div className="absolute left-30 top-20 z-40 bg-gray-900/95 border border-gray-800 rounded-xl shadow-2xl w-48 py-2 flex flex-col gap-1 animate-fade-in backdrop-blur-xl" data-rail-menu>
+                {/* Filters */}
+                <div className="px-2 pb-1 text-xs text-gray-400 font-semibold tracking-wide">
+                  Filters
+                </div>
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    onClick={() => {
+                      setMobileFilter(f.key as any);
+                      setShowRailMenu(false);
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-left transition-all duration-150 ${
+                      mobileFilter === f.key
+                        ? "bg-blue-900/60 text-blue-400 font-bold shadow"
+                        : "hover:bg-gray-800 text-gray-200"
+                    }`}
+                  >
+                    {f.icon}
+                    <span className="ml-2 capitalize">{f.key}</span>
+                  </button>
+                ))}
+                <hr className="my-2 border-gray-800" />
+                <button
+                  onClick={() => {
+                    onProfileClick?.();
+                    setShowRailMenu(false);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-md text-left hover:bg-gray-800 text-gray-200 transition-all duration-150"
+                >
+                  <UserIcon className="w-4 h-4" />
+                  <span>Profile</span>
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-4 py-2 rounded-md text-left hover:bg-gray-800 text-red-400 font-semibold transition-all duration-150"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Logout</span>
+                </button>
+              </div>
+            )}
           </div>
-          <div className="flex items-center justify-between w-full">
+          {/* Title and new chat button */}
+          <div className="flex items-center justify-between w-full mt-2">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-              <div className="p-2 bg-blue-600 rounded-lg flex-shrink-0">
+              <div className="p-2 bg-gradient-to-br from-blue-700 via-blue-500 to-indigo-500 rounded-xl flex-shrink-0 shadow-md">
                 <MessageCircle className="w-5 h-5 text-white" />
               </div>
-              <h2 className="text-xl font-bold text-white truncate">
-                {showAllUsers ? "New Chat" : "Messages"}
-              </h2>
-            </div>
-            <button
-              className={`p-2.5 rounded-lg transition-all duration-200 flex-shrink-0 shadow-md hover:shadow-lg ${
-                showAllUsers
-                  ? "bg-red-600 hover:bg-red-700 text-white"
-                  : "bg-blue-600 hover:bg-blue-700 text-white"
-              }`}
-              onClick={() => setShowAllUsers((prev) => !prev)}
-              aria-label={showAllUsers ? "Close new chat" : "New chat"}
-              style={{ minWidth: '40px', minHeight: '40px' }}
-            >
-              {showAllUsers ? (
-                <X className="w-4 h-4" />
-              ) : (
-                <Plus className="w-4 h-4" />
+              {!isSmallScreen && (
+                <h2 className="text-xl font-bold text-white truncate drop-shadow-sm tracking-tight">
+                  {showAllUsers ? "New Chat" : "Messages"}
+                </h2>
               )}
-            </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="p-2.5 rounded-md transition-all duration-200 flex-shrink-0  text-white"
+                onClick={() => setShowAllUsers((prev) => !prev)}
+                aria-label={showAllUsers ? "Close new chat" : "New chat"}
+                style={{ minWidth: "40px", minHeight: "40px" }}
+              >
+                {showAllUsers ? (
+                  <X className="w-4 h-4" />
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
+              </button>
+              <button
+                className={`p-2.5 rounded-md text-white transition-all duration-200 ${isDesktop ? 'md:hidden' : 'md:flex'}`}
+                onClick={() => setShowRailMenu(!showRailMenu)}
+                aria-label="More options"
+                data-rail-menu-button
+                style={{ minWidth: "40px", minHeight: "40px" }}
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           {selectionMode && (
-            <div className="mt-4 px-3 py-2 border border-gray-700 rounded-lg bg-gray-800 flex items-center justify-between">
+            <div className="mt-4 px-3 py-2 border border-gray-700 rounded-md bg-gray-800 flex items-center justify-between">
               <div className="text-gray-200 text-sm">
                 {selectedChatIds.size} selected
               </div>
@@ -196,7 +356,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 <input
                   type="text"
                   placeholder="Search users..."
-                  className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-gradient-to-r from-gray-800/90 to-gray-900/90 border border-gray-700/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/70 focus:border-transparent transition-all duration-300 shadow-lg group-hover:shadow-blue-500/5"
+                  className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-gradient-to-r from-gray-800/90 to-gray-900/90 border border-gray-700/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/70 focus:border-transparent transition-all duration-300 shadow-md group-hover:shadow-blue-500/5"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -204,8 +364,8 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   <Search className="w-5 h-5 text-blue-400" strokeWidth={2.5} />
                 </div>
                 {searchQuery && (
-                  <button 
-                    onClick={() => setSearchQuery('')}
+                  <button
+                    onClick={() => setSearchQuery("")}
                     className="absolute right-4 top-1/2 transform -translate-y-1/2 p-1 rounded-full hover:bg-gray-700/50 transition-colors"
                   >
                     <X className="w-4 h-4 text-gray-400 hover:text-white" />
@@ -214,7 +374,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               </div>
 
               {/* Users List */}
-              <div className="flex-1 overflow-y-auto pb-4 space-y-2">
+              <div
+                className="flex-1 overflow-y-auto scrollbar-hide pb-4 space-y-2"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+              >
                 {users?.filter(
                   (u) =>
                     u._id !== loggedInUser?._id &&
@@ -247,11 +410,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                             </div>
                           )}
                         </div>
-                         
-                         
 
                         <div className="flex-1 min-w-0 text-left">
-                          <div className="font-semibold text-lg text-white truncate">
+                          <div className="font-semibold text-md text-white truncate">
                             {u.name.split("@")[0]}
                           </div>
                           <div className="text-xs text-blue-300 mt-0.5 flex items-center">
@@ -265,144 +426,212 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               </div>
             </div>
           ) : chats && chats.length > 0 ? (
-            <div className="space-y-2 overflow-y-auto h-full pb-4">
+            <div
+              className="space-y-2 overflow-y-auto scrollbar-hide h-full pb-4"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            >
               {chats
-                .filter((c) => !hiddenChatIds.has(c.chat._id))
+                .filter((c) => {
+                  // For Hidden filter, show hidden items; otherwise exclude them
+                  const filterKey =
+                    typeof window !== "undefined" && window.innerWidth <= 768
+                      ? mobileFilter
+                      : activeFilter;
+                  if (filterKey === "hidden")
+                    return hiddenChatIds.has(c.chat._id);
+                  return !hiddenChatIds.has(c.chat._id);
+                })
+                .filter((c) => {
+                  const filterKey =
+                    typeof window !== "undefined" && window.innerWidth <= 768
+                      ? mobileFilter
+                      : activeFilter;
+                  if (filterKey === "all") return true;
+                  if (filterKey === "favourites")
+                    return favouriteChatIds.has(c.chat._id);
+                  if (filterKey === "hidden")
+                    return hiddenChatIds.has(c.chat._id);
+                  return true;
+                })
                 .sort((a, b) => {
-                  // Sort by latest message time or chat updatedAt, most recent first
-                  const aTime = a.chat.latestMessage?.createdAt || a.chat.updatedAt;
-                  const bTime = b.chat.latestMessage?.createdAt || b.chat.updatedAt;
+                  const aPinned = pinnedChatIds.has(a.chat._id) ? 1 : 0;
+                  const bPinned = pinnedChatIds.has(b.chat._id) ? 1 : 0;
+                  if (aPinned !== bPinned) return bPinned - aPinned;
+                  const aTime =
+                    a.chat.latestMessage?.createdAt || a.chat.updatedAt;
+                  const bTime =
+                    b.chat.latestMessage?.createdAt || b.chat.updatedAt;
                   return new Date(bTime).getTime() - new Date(aTime).getTime();
                 })
                 .map((chat) => {
-                const latestMessage = chat.chat.latestMessage;
-                const isSelected = selectedUser === chat.chat._id;
-                const isMarked = selectedChatIds.has(chat.chat._id);
-                const isSentByMe = latestMessage?.sender === loggedInUser?._id;
-                const unseenCount = chat.chat.unseenCount || 0;
+                  const latestMessage = chat.chat.latestMessage;
+                  const isSelected = selectedUser === chat.chat._id;
+                  const isMarked = selectedChatIds.has(chat.chat._id);
+                  const isSentByMe =
+                    latestMessage?.sender === loggedInUser?._id;
+                  const unseenCount = chat.chat.unseenCount || 0;
 
-                return (
-                  <button
-                    key={chat.chat._id}
-                    onClick={(e) => {
-                      if (selectionMode) {
-                        e.preventDefault();
-                        toggleSelect(chat.chat._id);
-                        return;
-                      }
-                      setSelectedUser(chat.chat._id);
-                      setSidebarOpen(false);
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      if (!selectionMode) enterSelectionWith(chat.chat._id); else toggleSelect(chat.chat._id);
-                    }}
-                    onPointerDown={() => {
-                      if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
-                      longPressTimerRef.current = window.setTimeout(() => {
-                        enterSelectionWith(chat.chat._id);
-                      }, 500);
-                    }}
-                    onPointerUp={() => {
-                      if (longPressTimerRef.current) {
-                        window.clearTimeout(longPressTimerRef.current);
-                        longPressTimerRef.current = null;
-                      }
-                    }}
-                    onPointerLeave={() => {
-                      if (longPressTimerRef.current) {
-                        window.clearTimeout(longPressTimerRef.current);
-                        longPressTimerRef.current = null;
-                      }
-                    }}
-                    className={`w-full text-left p-4 rounded-xl transition-all duration-200 border ${
-                      isMarked
-                        ? "bg-gray-800 border-blue-500 ring-2 ring-blue-500/50"
-                        : isSelected
+                  return (
+                    <button
+                      key={chat.chat._id}
+                      onClick={(e) => {
+                        if (selectionMode) {
+                          e.preventDefault();
+                          toggleSelect(chat.chat._id);
+                          return;
+                        }
+                        setSelectedUser(chat.chat._id);
+                        setSidebarOpen(false);
+                      }}
+                      onContextMenu={(e) => openMenu(e, chat.chat._id)}
+                      onPointerDown={() => {
+                        if (isDesktop) return; // Disable long press on desktop
+                        if (longPressTimerRef.current)
+                          window.clearTimeout(longPressTimerRef.current);
+                        longPressTimerRef.current = window.setTimeout(() => {
+                          enterSelectionWith(chat.chat._id);
+                        }, 500);
+                      }}
+                      onPointerUp={() => {
+                        if (isDesktop) return; // Disable long press on desktop
+                        if (longPressTimerRef.current) {
+                          window.clearTimeout(longPressTimerRef.current);
+                          longPressTimerRef.current = null;
+                        }
+                      }}
+                      onPointerLeave={() => {
+                        if (isDesktop) return; // Disable long press on desktop
+                        if (longPressTimerRef.current) {
+                          window.clearTimeout(longPressTimerRef.current);
+                          longPressTimerRef.current = null;
+                        }
+                      }}
+                      className={`w-full text-left p-4 rounded-xl transition-all duration-200 border ${
+                        isMarked
+                          ? "bg-gray-800 border-blue-500 ring-2 ring-blue-500/50"
+                          : isSelected
                           ? "bg-blue-600 border-blue-500 shadow-md"
                           : "bg-gray-800 border-gray-700 hover:border-blue-500 hover:bg-gray-800"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {selectionMode && (
-                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${
-                          isMarked ? 'bg-blue-600 border-blue-500' : 'border-gray-500'
-                        }`}>
-                          {isMarked && <div className="w-3 h-3 bg-white rounded-sm" />}
-                        </div>
-                      )}
-                      <div className={`relative p-2 rounded-full flex items-center justify-center ${
-                        isSelected ? "bg-white/20" : "bg-blue-600"
-                      }`}>
-                        <UserCircle className="w-6 h-6 text-white" />
-                        {onlineUsers && onlineUsers.includes(chat.user._id) && (
-                          <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-gray-900 flex items-center justify-center">
-                            <div className="w-1 h-1 rounded-full bg-white"></div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <span
-                            className={`font-semibold truncate ${
-                              isSelected ? "text-white" : "text-gray-200"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        {selectionMode && (
+                          <div
+                            className={`w-5 h-5 rounded-md border flex items-center justify-center ${
+                              isMarked
+                                ? "bg-blue-600 border-blue-500"
+                                : "border-gray-500"
                             }`}
                           >
-                            {chat.user.name.split("@")[0]}
-                          </span>
-                          {unseenCount > 0 && (
-                            <div className="bg-green-500 text-white text-xs font-bold rounded-full min-w-[22px] h-5 flex items-center justify-center px-2">
-                              {unseenCount > 99 ? "99+" : unseenCount}
+                            {isMarked && (
+                              <div className="w-3 h-3 bg-white rounded-sm" />
+                            )}
+                          </div>
+                        )}
+                        <div
+                          className={`relative p-2 rounded-full flex items-center justify-center ${
+                            isSelected ? "bg-white/20" : "bg-blue-600"
+                          }`}
+                        >
+                          <UserCircle className="w-6 h-6 text-white" />
+                          {onlineUsers &&
+                            onlineUsers.includes(chat.user._id) && (
+                              <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-gray-900 flex items-center justify-center">
+                                <div className="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-75"></div>
+                              </div>
+                            )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span
+                              className={`font-semibold truncate ${
+                                isSelected ? "text-white" : "text-gray-200"
+                              }`}
+                            >
+                              {chat.user.name.split("@")[0]}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {pinnedChatIds.has(chat.chat._id) && (
+                                <Pin className="w-4 h-4 text-blue-500" />
+                              )}
+                              {unseenCount > 0 && (
+                                <div className="bg-blue-500 text-white text-xs font-bold rounded-full min-w-[22px] h-5 flex items-center justify-center px-2">
+                                  {unseenCount > 99 ? "99+" : unseenCount}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {latestMessage && (
+                            <div className="flex items-center gap-2">
+                              {isSentByMe ? (
+                                <CornerUpLeft
+                                  size={14}
+                                  className={`flex-shrink-0 ${
+                                    isSelected
+                                      ? "text-blue-200"
+                                      : "text-blue-400"
+                                  }`}
+                                />
+                              ) : (
+                                <CornerDownRight
+                                  size={14}
+                                  className={`flex-shrink-0 ${
+                                    isSelected
+                                      ? "text-green-200"
+                                      : "text-green-400"
+                                  }`}
+                                />
+                              )}
+                              {(() => {
+                                const raw = latestMessage.text || "";
+                                const clean =
+                                  typeof raw === "string"
+                                    ? raw.replace(/^Forwarded\s*\n?/i, "")
+                                    : raw;
+                                return (
+                                  <span
+                                    className={`text-sm truncate flex-1 ${
+                                      isSelected
+                                        ? "text-gray-200"
+                                        : "text-gray-400"
+                                    }`}
+                                  >
+                                    {clean}
+                                  </span>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
-                        {latestMessage && (
-                          <div className="flex items-center gap-2">
-                            {isSentByMe ? (
-                              <CornerUpLeft
-                                size={14}
-                                className={`flex-shrink-0 ${
-                                  isSelected ? "text-blue-200" : "text-blue-400"
-                                }`}
-                              />
-                            ) : (
-                              <CornerDownRight
-                                size={14}
-                                className={`flex-shrink-0 ${
-                                  isSelected ? "text-green-200" : "text-green-400"
-                                }`}
-                              />
-                            )}
-                            <span className={`text-sm truncate flex-1 ${
-                              isSelected ? "text-gray-200" : "text-gray-400"
-                            }`}>
-                              {latestMessage.text}
-                            </span>
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-4">
               <div className="relative">
                 <div className="absolute inset-0 bg-blue-500/10 rounded-full blur-xl"></div>
                 <div className="p-6 bg-gradient-to-br from-gray-800 to-gray-900 rounded-full mb-4 shadow-xl relative z-10 border border-gray-700/30">
-                  <MessageCircle className="w-12 h-12 text-blue-400" strokeWidth={1.5} />
+                  <MessageCircle
+                    className="w-12 h-12 text-blue-400"
+                    strokeWidth={1.5}
+                  />
                 </div>
               </div>
               <p className="text-transparent bg-clip-text bg-gradient-to-r from-white to-blue-200 font-semibold text-xl mb-2">
                 No conversations yet
               </p>
               <p className="text-sm text-blue-300/80 max-w-[200px]">
-                Click the <span className="inline-flex items-center mx-1 text-blue-400"><Plus className="w-3 h-3 mr-1" /> New</span> button above or below to start messaging
+                Click the{" "}
+                <span className="inline-flex items-center mx-1 text-blue-400">
+                  <Plus className="w-3 h-3 mr-1" /> New
+                </span>{" "}
+                button above or below to start messaging
               </p>
-              <button 
+              <button
                 onClick={() => setShowAllUsers(true)}
-                className="mt-6 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg shadow-lg hover:shadow-blue-500/20 transition-all duration-300 flex items-center gap-2 font-medium text-base"
+                className="mt-6 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-md shadow-md hover:shadow-blue-500/20 transition-all duration-300 flex items-center gap-2 font-medium text-base"
               >
                 <Plus className="w-5 h-5" />
                 Start New Chat
@@ -411,30 +640,61 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-700 space-y-1 bg-gray-900 backdrop-blur-sm">
-          <button
-            onClick={() => {/* Add navigation to profile */}}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-gray-800 transition-all duration-200 group"
+        {/* Context Menu */}
+        {menuOpen && menuChatId && (
+          <div
+            className="fixed z-40 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-64 py-2"
+            style={{ left: menuPos.x + 8, top: menuPos.y + 8 }}
+            onMouseLeave={closeMenu}
+            onClick={closeMenu}
           >
-            <div className="p-1.5 bg-gray-700 rounded-full flex items-center justify-center">
-              <UserCircle className="w-5 h-5 text-gray-300" />
-            </div>
-            <span className="font-medium text-gray-300 group-hover:text-white transition-colors">
-              Profile
-            </span>
-          </button>
-          
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-red-600 transition-all duration-200 text-red-400 hover:text-white group"
-          >
-            <div className="p-1.5 bg-red-600/80 rounded-full flex items-center justify-center">
-              <LogOut className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-medium">Logout</span>
-          </button>
-        </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const n = new Set(hiddenChatIds);
+                if (n.has(menuChatId!)) {
+                  n.delete(menuChatId!);
+                } else {
+                  n.add(menuChatId!);
+                }
+                setHiddenChatIds(n);
+                persistHidden(n);
+              }}
+              className="w-full text-left px-4 py-2 hover:bg-gray-800 text-gray-200"
+            >
+              {hiddenChatIds.has(menuChatId!) ? "Unhide chat" : "Hide chat"}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                deleteForMe(menuChatId!);
+              }}
+              className="w-full text-left px-4 py-2 hover:bg-gray-800 text-gray-200"
+            >
+              Delete chat (for me)
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePin(menuChatId!);
+              }}
+              className="w-full text-left px-4 py-2 hover:bg-gray-800 text-gray-200"
+            >
+              {pinnedChatIds.has(menuChatId!) ? "Unpin chat" : "Pin chat"}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFavourite(menuChatId!);
+              }}
+              className="w-full text-left px-4 py-2 hover:bg-gray-800 text-gray-200"
+            >
+              {favouriteChatIds.has(menuChatId!)
+                ? "Remove from favourites"
+                : "Add to favourites"}
+            </button>
+          </div>
+        )}
       </aside>
     </div>
   );

@@ -8,3 +8,12 @@
   width: 0;
   height: 0;
 }
+
+/* Hide scrollbar for chat messages while preserving scroll */
+.scrollbar-hide {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+.scrollbar-hide::-webkit-scrollbar { /* Chrome, Safari */
+  display: none;
+}

@@ -1,7 +1,7 @@
 "use client"
 
 import {io, Socket } from "socket.io-client"
-import { createContext, ReactNode,useContext,useEffect, useState } from "react";
+import { createContext, ReactNode,useContext,useEffect, useState, useCallback } from "react";
 import { chat_service, useAppData } from "./AppContext";
 
 interface SocketContextType{
@@ -10,6 +10,8 @@ interface SocketContextType{
     sendMessage: (message: any) => void;
     sendTyping: (data: { chatId: string; userId: string }) => void;
     sendStopTyping: (data: { chatId: string; userId: string }) => void;
+    onMessageReceived?: (callback: (message: any) => void) => void;
+    offMessageReceived?: (callback: (message: any) => void) => void;
 }
 
 const SocketContext= createContext<SocketContextType>({
@@ -18,6 +20,8 @@ const SocketContext= createContext<SocketContextType>({
     sendMessage: () => {},
     sendTyping: () => {},
     sendStopTyping: () => {},
+    onMessageReceived: () => {},
+    offMessageReceived: () => {},
 });
 
 interface ProviderProps{
@@ -28,6 +32,7 @@ export const SocketProvider= ({children}:ProviderProps)=>{
     const [socket,setSocket]= useState<Socket|null>(null)
     const {user}= useAppData();
     const [onlineUsers,setOnlineUsers]= useState<string[]>([]);
+    const [messageCallbacks, setMessageCallbacks] = useState<Set<(message: any) => void>>(new Set());
 
     useEffect(()=>{
         if(!user?._id) return;
@@ -42,12 +47,24 @@ export const SocketProvider= ({children}:ProviderProps)=>{
             console.log("Socket.io connected:", newSocket.id);
         });
 
+        newSocket.on("disconnect", () => {
+            console.log("Socket.io disconnected");
+        });
+
+        newSocket.on("connect_error", (error) => {
+            console.log("Socket.io connection error:", error);
+        });
+
         setSocket(newSocket);
 
         newSocket.on("getOnlineUser",(users:string[])=>{
           setOnlineUsers(users);
         });
 
+        // Global message handler
+        newSocket.on("messageReceived", (message: any) => {
+          messageCallbacks.forEach(callback => callback(message));
+        });
 
         return ()=>{
            newSocket.disconnect(); 
@@ -73,8 +90,20 @@ export const SocketProvider= ({children}:ProviderProps)=>{
         }
     };
 
+    const onMessageReceived = useCallback((callback: (message: any) => void) => {
+        setMessageCallbacks(prev => new Set([...prev, callback]));
+    }, []);
+
+    const offMessageReceived = useCallback((callback: (message: any) => void) => {
+        setMessageCallbacks(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(callback);
+            return newSet;
+        });
+    }, []);
+
     return (
-        <SocketContext.Provider value={{ socket, onlineUsers, sendMessage, sendTyping, sendStopTyping }}>
+        <SocketContext.Provider value={{ socket, onlineUsers, sendMessage, sendTyping, sendStopTyping, onMessageReceived, offMessageReceived }}>
             {children}
         </SocketContext.Provider>
     );
