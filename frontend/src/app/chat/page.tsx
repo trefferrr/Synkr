@@ -49,7 +49,13 @@ const ChatApp = () => {
       
       // Find the chat and move it to the top
       const chatIndex = prev.findIndex(chat => chat.chat._id === chatId);
-      if (chatIndex === -1) return prev;
+      
+      // If chat not found (was deleted), re-fetch chats to get the updated list
+      if (chatIndex === -1) {
+        console.log("Chat not found in list, re-fetching chats...");
+        fetchChats(); // This will re-fetch all chats including the one with new message
+        return prev;
+      }
       
       const updatedChats = [...prev];
       const [movedChat] = updatedChats.splice(chatIndex, 1);
@@ -68,7 +74,7 @@ const ChatApp = () => {
       
       return updatedChats;
     });
-  }, [setChats]);
+  }, [setChats, fetchChats]);
 
   console.log(onlineUsers);
 
@@ -441,6 +447,10 @@ const ChatApp = () => {
            onlineUsers={onlineUsers}
            activeFilter={activeFilter}
            onProfileClick={() => router.push('/profile')}
+           setChats={setChats}
+           setMessages={setMessages}
+           setMessage={setMessage}
+           setUsers={setUsers}
          />
        </div>
 

@@ -35,6 +35,10 @@ interface ChatSidebarProps {
   onlineUsers: string[] | undefined;
   activeFilter?: 'all'|'favourites'|'hidden';
   onProfileClick?: () => void;
+  setChats?: React.Dispatch<React.SetStateAction<any[] | null>>;
+  setMessages?: React.Dispatch<React.SetStateAction<any[] | null>>;
+  setMessage?: React.Dispatch<React.SetStateAction<string>>;
+  setUsers?: React.Dispatch<React.SetStateAction<any>>;
 }
 
 // Responsive: AppRail actions as menu
@@ -59,6 +63,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onlineUsers,
   activeFilter = 'all',
   onProfileClick,
+  setChats,
+  setMessages,
+  setMessage,
+  setUsers,
 }) => {
   // Responsive menu state
   const [showRailMenu, setShowRailMenu] = useState(false);
@@ -222,6 +230,20 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     closeMenu();
   }
   const deleteForMe=(chatId:string)=>{
+    // If the deleted chat is currently selected, close it and reset to default state
+    if (selectedUser === chatId) {
+      setSelectedUser(null);
+      // Clear all messages, message input, and user data
+      if (setMessages) setMessages(null);
+      if (setMessage) setMessage("");
+      if (setUsers) setUsers(null);
+    }
+    
+    // Remove chat from the chats array
+    if (setChats) {
+        setChats((prev) => prev ? prev.filter(c => c.chat._id !== chatId) : prev);
+    }
+    // Also add to hidden (as backup)
     const next=new Set(hiddenChatIds); next.add(chatId);
      setHiddenChatIds(next); persistHidden(next); closeMenu();
   }
@@ -322,29 +344,6 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
               </button>
             </div>
           </div>
-          {selectionMode && (
-            <div className="mt-4 px-3 py-2 border border-gray-700 rounded-md bg-gray-800 flex items-center justify-between">
-              <div className="text-gray-200 text-sm">
-                {selectedChatIds.size} selected
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={hideSelected}
-                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md flex items-center gap-2"
-                  aria-label="Hide selected"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Hide
-                </button>
-                <button
-                  onClick={clearSelection}
-                  className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded-md"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Content */}
