@@ -200,15 +200,15 @@ await Chat.findByIdAndUpdate(chatId,{
 
  //emit socket
 
- io.to(chatId).emit("newMessage", savedMessage);
+ io.to(chatId).emit("messageReceived", savedMessage);
 
  if(receiverSocketId){
-    io.to(receiverSocketId).emit("newMessage", savedMessage);
+    io.to(receiverSocketId).emit("messageReceived", savedMessage);
  }
 
     const senderSocketId=getReceiverSocketId(senderId.toString());
     if(senderSocketId){
-        io.to(senderSocketId).emit("newMessage", savedMessage);
+        io.to(senderSocketId).emit("messageReceived", savedMessage);
     }
 
     if(isReceiverInChatRoom && senderSocketId){
