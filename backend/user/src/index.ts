@@ -26,19 +26,13 @@ const app = express()
 
 app.use(express.json());
 
-app.use(cors({
-    origin: [
-        'https://frontend-fw0r5mpky-adityas-projects-6d993e50.vercel.app',
-        'http://localhost:3000' // for local development
-    ],
-    credentials: true
-}));
+app.use(cors());
 
 app.use("/api/v1",userRoutes);
 
 const port = Number(process.env.PORT) || 5000
 
 
-app.listen(port, '0.0.0.0', () => {
+app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
 });
