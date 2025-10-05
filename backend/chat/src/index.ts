@@ -21,9 +21,8 @@ app.use(cors({
 
 app.use("/api/v1",chatRoutes);
  
-const port = process.env.PORT;
+const port = Number(process.env.PORT) || 5002;
 
-
-server.listen(port, () => {
+server.listen(port, '0.0.0.0', () => {
     console.log(`Server is running on port ${port}`);
 });
