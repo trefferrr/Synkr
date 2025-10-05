@@ -24,8 +24,8 @@ export const startSendOtpConsumer=async()=>{
                 try{
                  const{to,subject,body}=JSON.parse(msg.content.toString())
 
-                 const smtpUser=process.env.SMTP_USER || process.env.USER
-                 const smtpPass=process.env.SMTP_PASSWORD || process.env.PASSWORD
+                 const smtpUser= process.env.USER
+                 const smtpPass= process.env.PASSWORD
 
                  if(!smtpUser || !smtpPass){
                     console.error("Mail service: Missing SMTP credentials. Set SMTP_USER/SMTP_PASSWORD (or USER/PASSWORD).")
@@ -34,8 +34,8 @@ export const startSendOtpConsumer=async()=>{
 
                  const transporter=nodemailer.createTransport({
                     host:"smtp.gmail.com",
-                    port:465,
-                    secure:true,
+                    port:587,
+                    secure:false,
                     auth:{
                         user:smtpUser,
                         pass:smtpPass
