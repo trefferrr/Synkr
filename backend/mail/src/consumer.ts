@@ -1,62 +1,64 @@
-import amqp from "amqplib";
-import dotenv from "dotenv";
-import { Resend } from "resend";
+import amqp from "amqplib"
+import nodemailer from "nodemailer"
+import dontenv from "dotenv"
+dontenv.config();
 
-dotenv.config();
+export const startSendOtpConsumer=async()=>{
+    try{
+        const connection=await amqp.connect({
+            protocol:"amqp",
+            hostname:process.env.RABBITMQ_HOST!,
+            port:5672,
+            username:process.env.RABBITMQ_USERNAME!,
+            password:process.env.RABBITMQ_PASSWORD!,
 
-export const startSendOtpConsumer = async () => {
-  try {
-    const connection = await amqp.connect({
-      protocol: "amqp",
-      hostname: process.env.RABBITMQ_HOST,
-      port: 5672,
-      username: process.env.RABBITMQ_USERNAME,
-      password: process.env.RABBITMQ_PASSWORD,
-    });
+        });
+        const channel=await connection.createChannel()
 
-    const channel = await connection.createChannel();
-    const queueName = "send-otp";
+        const queuename="send-otp"
 
-    await channel.assertQueue(queueName, { durable: true });
-    console.log("✅ Mail Service consumer started, listening for OTP emails");
+        await channel.assertQueue(queuename,{durable:true});
+        console.log("✅ Mail Service consumer started, listening for otp emails");
+        channel.consume(queuename,async(msg)=>{
+            if(msg){
+                try{
+                 const{to,subject,body}=JSON.parse(msg.content.toString())
 
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    {/*hi*/}
-    channel.consume(queueName, async (msg) => {
-      if (msg) {
-        try {
-          const { to, subject, body } = JSON.parse(msg.content.toString());
+                 const smtpUser=process.env.SMTP_USER || process.env.USER
+                 const smtpPass=process.env.SMTP_PASSWORD || process.env.PASSWORD
 
-          if (!to || !subject || !body) {
-            console.error("❌ Missing email parameters in message:", msg.content.toString());
-            channel.nack(msg, false, false);
-            return;
-          }
+                 if(!smtpUser || !smtpPass){
+                    console.error("Mail service: Missing SMTP credentials. Set SMTP_USER/SMTP_PASSWORD (or USER/PASSWORD).")
+                    return;
+                 }
 
-          const fromEmail = process.env.FROM_EMAIL || "onboarding@resend.dev";
+                 const transporter=nodemailer.createTransport({
+                    host:"smtp.gmail.com",
+                    port:465,
+                    secure:true,
+                    auth:{
+                        user:smtpUser,
+                        pass:smtpPass
+                    }
+                 });
+                 await transporter.sendMail({
+                    from:`Synkr <${smtpUser}>`,
+                    to,
+                    subject,
+                    text:body
+                 })
+                 console.log(`OTP mail sent ${to}`)
+                 channel.ack(msg); // Acknowledge the message after successful processing
 
-          // Send email using Resend
-          const response = await resend.emails.send({
-            from: `Synkr <${fromEmail}>`,
-            to,
-            subject,
-            html: `<p>${body}</p>`,
-          });
-
-          // Handle Resend response: log id if available, else log the whole response
-          if ('data' in response && response.data && 'id' in response.data) {
-            console.log(`✅ OTP mail sent to ${to}:`, response.data.id);
-          } else {
-            console.log(`✅ OTP mail sent to ${to}:`, response);
-          }
-          channel.ack(msg); // mark as processed
-        } catch (error) {
-          console.error("❌ Failed to send OTP:", error);
-          channel.nack(msg, false, false); // reject message
-        }
-      }
-    });
-  } catch (error) {
-    console.error("❌ Failed to start RabbitMQ consumer:", error);
-  }
-};
+                }
+                catch(e){
+                    console.log("Failed to send otp",e)
+                    channel.nack(msg, false, false); // Reject message on failure
+                }
+            }
+        })
+    }
+    catch(e){
+        console.log("Failed to start rabbitmq consumer",e);
+    }
+}
