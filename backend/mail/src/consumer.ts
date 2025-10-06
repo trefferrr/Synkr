@@ -21,7 +21,7 @@ export const startSendOtpConsumer = async () => {
     console.log("✅ Mail Service consumer started, listening for OTP emails");
 
     const resend = new Resend(process.env.RESEND_API_KEY);
-
+    {/*hi*/}
     channel.consume(queueName, async (msg) => {
       if (msg) {
         try {
@@ -43,7 +43,12 @@ export const startSendOtpConsumer = async () => {
             html: `<p>${body}</p>`,
           });
 
-          console.log(`✅ OTP mail sent to ${to}:`, response.id || response);
+          // Handle Resend response: log id if available, else log the whole response
+          if ('data' in response && response.data && 'id' in response.data) {
+            console.log(`✅ OTP mail sent to ${to}:`, response.data.id);
+          } else {
+            console.log(`✅ OTP mail sent to ${to}:`, response);
+          }
           channel.ack(msg); // mark as processed
         } catch (error) {
           console.error("❌ Failed to send OTP:", error);
